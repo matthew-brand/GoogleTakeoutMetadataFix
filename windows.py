@@ -7,7 +7,15 @@ import win32con
 
 def modify_time(file_path, timestamp):
     dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-    handle = win32file.CreateFile(file_path, win32file.GENERIC_WRITE, 0, None, win32con.OPEN_EXISTING, win32con.FILE_ATTRIBUTE_NORMAL, None)
+    handle = win32file.CreateFile(
+        file_path,
+        win32file.GENERIC_WRITE,
+        0,
+        None,
+        win32con.OPEN_EXISTING,
+        win32con.FILE_ATTRIBUTE_NORMAL,
+        None
+    )
     win32file.SetFileTime(handle, dt, None, None)
     handle.close()
 
@@ -15,13 +23,19 @@ def get_timestamp(data):
     if 'photoTakenTime' in data and 'timestamp' in data['photoTakenTime']:
         return int(data['photoTakenTime']['timestamp'])
     elif 'created' in data:
-        dt = datetime.strptime(data['created'], "%Y-%m-%dT%H:%M:%S.%fZ")
-        return int(dt.timestamp())
+        created = data['created']
+        for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ"):
+            try:
+                dt = datetime.strptime(created, fmt).replace(tzinfo=timezone.utc)
+                return int(dt.timestamp())
+            except ValueError:
+                pass
+        raise ValueError(f"Unsupported created timestamp format: {created}")
     else:
         raise KeyError("No valid timestamp found in JSON data")
 
 def process_file(directory, filename):
-    base_filename = os.path.splitext(filename)[-2]
+    base_filename = os.path.splitext(filename)[0]
     json_paths = [
         os.path.join(directory, f"{filename}.json"),
         os.path.join(directory, f"{filename}-info.json"),
@@ -38,7 +52,7 @@ def process_file(directory, filename):
                     timestamp = get_timestamp(data)
                     modify_time(jpg_path, timestamp)
                     print(f"Updated {jpg_path} with timestamp {timestamp}")
-                
+
                 os.remove(json_path)
                 print(f"Removed {json_path}")
                 break
@@ -61,7 +75,7 @@ if __name__ == "__main__":
         print("Usage: python windows.py <directory_path1> <directory_path2> ...")
     else:
         recursive = input("Do you want to search all subdirectories? (y/n): ").strip().lower() == 'y'
-        
+
         for directory in sys.argv[1:]:
             if os.path.isdir(directory):
                 process_directory(directory, recursive)
